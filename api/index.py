@@ -269,6 +269,7 @@ def render_home(start_response):
                 select id,name,image_url,type,category,
                        tiktok_followers,youtube_subs,instagram_followers,facebook_followers
                 from profiles
+                where trim(ifnull(image_url,'')) != ''
                 order by (tiktok_followers + youtube_subs + instagram_followers + facebook_followers) desc
                 limit 8
                 """
@@ -282,6 +283,7 @@ def render_home(start_response):
                 select id,name,image_url,type,category,tiktok_followers as v
                 from profiles
                 where (tiktok_handle is not null and trim(tiktok_handle) != '')
+                  and trim(ifnull(image_url,'')) != ''
                 order by tiktok_followers desc
                 limit 30
                 """
@@ -294,6 +296,7 @@ def render_home(start_response):
                 select id,name,image_url,type,category,youtube_subs as v
                 from profiles
                 where (youtube_handle is not null and trim(youtube_handle) != '')
+                  and trim(ifnull(image_url,'')) != ''
                 order by youtube_subs desc
                 limit 30
                 """
@@ -306,6 +309,7 @@ def render_home(start_response):
                 select id,name,image_url,type,category,facebook_followers as v
                 from profiles
                 where (facebook_handle is not null and trim(facebook_handle) != '')
+                  and trim(ifnull(image_url,'')) != ''
                 order by facebook_followers desc
                 limit 30
                 """
@@ -334,7 +338,7 @@ def render_home(start_response):
 
     chips = "".join([f"<span class='chip'>{html.escape(x)}</span>" for x in CATEGORIES_10])
 
-    def top_list_html(items, label):
+    def top_list_html(items, label, unit):
         li = []
         for r in items:
             avatar = proxied_image_url(r.get("image_url") or "", r.get("name") or "KOL")
@@ -343,7 +347,7 @@ def render_home(start_response):
                 <a class='t-item' href='/profile/{r.get("id")}' title='{html.escape(r.get("name") or '')}'>
                   <img src='{html.escape(avatar)}' alt='{html.escape(r.get("name") or '')}' onerror="this.onerror=null;this.src='/img?seed=top-fallback';"/>
                   <div class='t-name'>{html.escape(r.get("name") or '')}</div>
-                  <div class='t-val'>{fmt_num(r.get('v') or 0)}</div>
+                  <div class='t-val'>{fmt_num(r.get('v') or 0)} {html.escape(unit)}</div>
                 </a>
                 """
             )
@@ -351,9 +355,9 @@ def render_home(start_response):
 
     top_sections = "".join(
         [
-            top_list_html(top_tiktok, "Top follow TikTok (30)"),
-            top_list_html(top_youtube, "Top follow YouTube (30)"),
-            top_list_html(top_facebook, "Top follow Facebook (30)"),
+            top_list_html(top_tiktok, "Top TikTok (30)", "followers"),
+            top_list_html(top_youtube, "Top YouTube (30)", "subs"),
+            top_list_html(top_facebook, "Top Facebook (30)", "followers"),
         ]
     )
 
