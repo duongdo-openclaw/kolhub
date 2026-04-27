@@ -651,7 +651,6 @@ def render_profile(start_response, pid: int):
         <div>
           <h1 class='name'>{html.escape(p.get('name') or '')}</h1>
           <div class='sub'>{html.escape(p.get('type') or 'KOL')} • {html.escape(p.get('category') or 'General')} • Cập nhật: {html.escape(p.get('updated_at') or '-')}</div>
-          <div class='sub' style='margin-top:6px'>Avatar verify: <b style='color:{'#34d399' if p.get('avatar_verified') else '#fbbf24'}'>{'VERIFIED' if p.get('avatar_verified') else 'NEEDS VERIFY'}</b> <span style='color:var(--muted2)'>({html.escape(p.get('avatar_verify_reason') or '-')})</span></div>
           <div class='sub' style='margin-top:10px'>{html.escape((p.get('bio') or 'Chưa có mô tả ngắn cho profile này.'))}</div>
 
           <div class='stats'>
