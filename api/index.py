@@ -166,6 +166,37 @@ def normalize_handle(h):
     return s.lstrip("@")
 
 
+def avatar_verification_status(row) -> tuple[bool, str]:
+    """Heuristic verification for admin/UI.
+
+    verified=True when avatar URL looks like it came from the platform/CDN/resolver,
+    not from placeholders.
+    """
+    url = (row.get("image_url") or "").strip()
+    low = url.lower()
+    if not url:
+        return (False, "missing")
+
+    # Placeholder / demo providers
+    if any(x in low for x in ["ui-avatars.com", "pravatar", "picsum", "placehold", "randomuser.me"]) or low.startswith("data:"):
+        return (False, "placeholder")
+
+    # High-confidence sources
+    if any(x in low for x in [
+        "yt3.ggpht.com",
+        "yt3.googleusercontent.com",
+        "googleusercontent.com",
+        "tiktokcdn",
+        "unavatar.io",
+        "fbcdn.net",
+        "cdninstagram",
+    ]):
+        return (True, "verified")
+
+    # Unknown source
+    return (False, "unknown")
+
+
 def make_recent_posts(row):
     posts = []
     tiktok = normalize_handle(row.get("tiktok_handle"))
@@ -477,6 +508,10 @@ def render_profile(start_response, pid: int):
 
         p = dict(row)
 
+        v_ok, v_reason = avatar_verification_status(p)
+        p["avatar_verified"] = bool(v_ok)
+        p["avatar_verify_reason"] = v_reason
+
         similar = [
             dict(r)
             for r in conn.execute(
@@ -613,6 +648,7 @@ def render_profile(start_response, pid: int):
         <div>
           <h1 class='name'>{html.escape(p.get('name') or '')}</h1>
           <div class='sub'>{html.escape(p.get('type') or 'KOL')} • {html.escape(p.get('category') or 'General')} • Cập nhật: {html.escape(p.get('updated_at') or '-')}</div>
+          <div class='sub' style='margin-top:6px'>Avatar verify: <b style='color:{'#34d399' if p.get('avatar_verified') else '#fbbf24'}'>{'VERIFIED' if p.get('avatar_verified') else 'NEEDS VERIFY'}</b> <span style='color:var(--muted2)'>({html.escape(p.get('avatar_verify_reason') or '-')})</span></div>
           <div class='sub' style='margin-top:10px'>{html.escape((p.get('bio') or 'Chưa có mô tả ngắn cho profile này.'))}</div>
 
           <div class='stats'>
@@ -1005,6 +1041,9 @@ def app(environ, start_response):
             return json_response(start_response, {"ok": False, "error": "Not found"}, "404 Not Found")
 
         p = dict(row)
+        v_ok, v_reason = avatar_verification_status(p)
+        p["avatar_verified"] = bool(v_ok)
+        p["avatar_verify_reason"] = v_reason
         assets = parse_assets(p.get("assets_public"))
         if len(assets) < 10:
             assets = assets + [x for x in DEFAULT_ASSETS if x not in assets]
