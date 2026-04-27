@@ -26,6 +26,9 @@ LIST_COLUMNS = [
     "youtube_subs",
     "instagram_followers",
     "facebook_followers",
+    "avatar_source",
+    "avatar_needs_verify",
+    "avatar_note",
     "updated_at",
 ]
 
