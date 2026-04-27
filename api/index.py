@@ -569,13 +569,36 @@ def render_profile(start_response, pid: int):
     return html_response(start_response, page)
 
 
-def render_explore(start_response, q: str = ""):
+def render_explore(start_response, q: str = "", category: str = "", platform: str = "", min_followers: int = 0):
     search = (q or "").strip().lower()
+    category = (category or "").strip()
+    platform = (platform or "").strip().lower()
+    min_followers = max(0, int(min_followers or 0))
+
     where = []
     params = []
+
     if search:
         where.append("lower(name) like ?")
         params.append(f"%{search}%")
+
+    if category and category.lower() != "all":
+        where.append("lower(category) = ?")
+        params.append(category.lower())
+
+    if platform in {"tiktok", "youtube", "instagram", "facebook"}:
+        col = {
+            "tiktok": "tiktok_followers",
+            "youtube": "youtube_subs",
+            "instagram": "instagram_followers",
+            "facebook": "facebook_followers",
+        }[platform]
+        where.append(f"{col} >= ?")
+        params.append(min_followers)
+    elif min_followers > 0:
+        where.append("(tiktok_followers + youtube_subs + instagram_followers + facebook_followers) >= ?")
+        params.append(min_followers)
+
     where_sql = f" where {' and '.join(where)}" if where else ""
 
     with db() as conn:
@@ -586,7 +609,7 @@ def render_explore(start_response, q: str = ""):
                 select {', '.join(LIST_COLUMNS)} from profiles
                 {where_sql}
                 order by (tiktok_followers + youtube_subs + instagram_followers + facebook_followers) desc
-                limit 60
+                limit 120
                 """,
                 params,
             ).fetchall()
@@ -614,10 +637,24 @@ def render_explore(start_response, q: str = ""):
                 <span class='tag'>TikTok {fmt_num(p.get("tiktok_followers") or 0)}</span>
                 <span class='tag'>YouTube {fmt_num(p.get("youtube_subs") or 0)}</span>
                 <span class='tag'>IG {fmt_num(p.get("instagram_followers") or 0)}</span>
+                <span class='tag'>FB {fmt_num(p.get("facebook_followers") or 0)}</span>
               </div>
             </a>
             """
         )
+
+    category_options = "".join(
+        [
+            f"<option value='{html.escape(c)}' {'selected' if c == category else ''}>{html.escape(c)}</option>"
+            for c in (["all"] + CATEGORIES_10)
+        ]
+    )
+    platform_options = "".join(
+        [
+            f"<option value='{k}' {'selected' if k == platform else ''}>{v}</option>"
+            for k, v in [("", "Tất cả nền tảng"), ("tiktok", "TikTok"), ("youtube", "YouTube"), ("instagram", "Instagram"), ("facebook", "Facebook")]
+        ]
+    )
 
     page = f"""
 <!doctype html>
@@ -629,11 +666,15 @@ def render_explore(start_response, q: str = ""):
   <style>
     body{{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:#0b1020;color:#eaf0ff}}
     a{{color:inherit;text-decoration:none}}
-    .container{{max-width:1100px;margin:0 auto;padding:0 18px}}
-    .top{{position:sticky;top:0;background:rgba(11,16,32,.82);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.10);z-index:10}}
+    .container{{max-width:1120px;margin:0 auto;padding:0 18px}}
+    .top{{position:sticky;top:0;background:rgba(11,16,32,.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.10);z-index:10}}
     .top-inner{{display:flex;align-items:center;gap:12px;padding:12px 0;flex-wrap:wrap}}
-    .input{{height:40px;border-radius:999px;padding:0 14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;outline:none}}
-    .btn{{height:40px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;cursor:pointer}}
+    .nav3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%}}
+    .btn{{height:42px;padding:0 14px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}}
+    .btn.active{{background:linear-gradient(90deg,#7c3aed,#2563eb);border-color:transparent}}
+    .filters{{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;width:100%}}
+    @media(max-width:980px){{.filters{{grid-template-columns:1fr 1fr}}}}
+    .input,.select{{height:42px;border-radius:12px;padding:0 12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;outline:none}}
     .grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:18px 0 40px}}
     @media(max-width:980px){{.grid{{grid-template-columns:1fr}}}}
     .card{{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:16px;padding:14px}}
@@ -648,11 +689,20 @@ def render_explore(start_response, q: str = ""):
 <body>
   <div class='top'>
     <div class='container'>
-      <form class='top-inner' method='get' action='/explore'>
-        <a class='btn' href='/'>← Home</a>
-        <input name='q' value='{html.escape(q or '')}' class='input' placeholder='Tìm theo tên...' style='flex:1; min-width:200px'/>
-        <button class='btn' type='submit'>Search</button>
-      </form>
+      <div class='top-inner'>
+        <div class='nav3'>
+          <a class='btn' href='/'>Home</a>
+          <a class='btn active' href='/explore'>KOList</a>
+          <a class='btn' href='/profile/first'>Top Profile</a>
+        </div>
+        <form class='filters' method='get' action='/explore'>
+          <input name='q' value='{html.escape(q or '')}' class='input' placeholder='Search theo tên...'/>
+          <input name='min_followers' value='{int(min_followers or 0)}' type='number' min='0' step='1000' class='input' placeholder='Min followers'/>
+          <select name='category' class='select'>{category_options}</select>
+          <select name='platform' class='select'>{platform_options}</select>
+          <button class='btn' type='submit'>Lọc</button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -831,6 +881,9 @@ def app(environ, start_response):
     if path == "/explore":
         qs = parse_qs(environ.get("QUERY_STRING", ""))
         q = (qs.get("q", [""])[0] or "").strip()
-        return render_explore(start_response, q)
+        category = (qs.get("category", [""])[0] or "").strip()
+        platform = (qs.get("platform", [""])[0] or "").strip()
+        min_followers = clamp_int((qs.get("min_followers", ["0"])[0] or "0"), 0, 0, 10**9)
+        return render_explore(start_response, q, category=category, platform=platform, min_followers=min_followers)
 
     return json_response(start_response, {"ok": False, "error": "Not found"}, "404 Not Found")
