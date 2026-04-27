@@ -270,6 +270,12 @@ def render_home(start_response):
                        tiktok_followers,youtube_subs,instagram_followers,facebook_followers
                 from profiles
                 where trim(ifnull(image_url,'')) != ''
+                  and lower(image_url) not like '%randomuser.me%'
+                  and lower(image_url) not like '%ui-avatars%'
+                  and lower(image_url) not like '%pravatar%'
+                  and lower(image_url) not like '%picsum%'
+                  and lower(image_url) not like '%placehold%'
+                  and lower(image_url) not like '%unavatar.io%'
                 order by (tiktok_followers + youtube_subs + instagram_followers + facebook_followers) desc
                 limit 8
                 """
