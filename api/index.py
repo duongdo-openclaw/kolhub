@@ -1015,6 +1015,11 @@ def app(environ, start_response):
             total = conn.execute(count_sql, params).fetchone()[0]
             rows = [dict(r) for r in conn.execute(list_sql, [*params, limit, offset]).fetchall()]
 
+        for p in rows:
+            v_ok, v_reason = avatar_verification_status(p)
+            p["avatar_verified"] = bool(v_ok)
+            p["avatar_verify_reason"] = v_reason
+
         return json_response(
             start_response,
             {
