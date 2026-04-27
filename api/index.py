@@ -654,11 +654,15 @@ def render_profile(start_response, pid: int):
     return html_response(start_response, page)
 
 
-def render_explore(start_response, q: str = "", category: str = "", platform: str = "", min_followers: int = 0):
+def render_explore(start_response, q: str = "", category: str = "", platform: str = "", min_followers: int = 0, sort: str = "followers"):
     search = (q or "").strip().lower()
     category = (category or "").strip()
+    category_value = category if category else "all"
     platform = (platform or "").strip().lower()
     min_followers = max(0, int(min_followers or 0))
+    sort = (sort or "followers").strip().lower()
+    if sort not in {"followers", "newest", "name"}:
+        sort = "followers"
 
     where = []
     params = []
@@ -667,9 +671,9 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
         where.append("lower(name) like ?")
         params.append(f"%{search}%")
 
-    if category and category.lower() != "all":
+    if category_value and category_value.lower() != "all":
         where.append("lower(category) = ?")
-        params.append(category.lower())
+        params.append(category_value.lower())
 
     if platform in {"tiktok", "youtube", "instagram", "facebook"}:
         col = {
@@ -684,6 +688,18 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
         where.append("(tiktok_followers + youtube_subs + instagram_followers + facebook_followers) >= ?")
         params.append(min_followers)
 
+    if sort == "name":
+        order_sql = "name asc"
+    elif sort == "newest":
+        order_sql = "updated_at desc"
+    else:
+        order_sql = {
+            "tiktok": "tiktok_followers desc",
+            "youtube": "youtube_subs desc",
+            "instagram": "instagram_followers desc",
+            "facebook": "facebook_followers desc",
+        }.get(platform, "(tiktok_followers + youtube_subs + instagram_followers + facebook_followers) desc")
+
     where_sql = f" where {' and '.join(where)}" if where else ""
 
     with db() as conn:
@@ -693,7 +709,7 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
                 f"""
                 select {', '.join(LIST_COLUMNS)} from profiles
                 {where_sql}
-                order by (tiktok_followers + youtube_subs + instagram_followers + facebook_followers) desc
+                order by {order_sql}
                 limit 120
                 """,
                 params,
@@ -730,7 +746,7 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
 
     category_options = "".join(
         [
-            f"<option value='{html.escape(c)}' {'selected' if c == category else ''}>{html.escape(c)}</option>"
+            f"<option value='{html.escape(c)}' {'selected' if c == category_value else ''}>{html.escape('Tất cả lĩnh vực' if c == 'all' else c)}</option>"
             for c in (["all"] + CATEGORIES_10)
         ]
     )
@@ -739,6 +755,49 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
             f"<option value='{k}' {'selected' if k == platform else ''}>{v}</option>"
             for k, v in [("", "Tất cả nền tảng"), ("tiktok", "TikTok"), ("youtube", "YouTube"), ("instagram", "Instagram"), ("facebook", "Facebook")]
         ]
+    )
+    sort_options = "".join(
+        [
+            f"<option value='{k}' {'selected' if k == sort else ''}>{v}</option>"
+            for k, v in [("followers", "Top followers"), ("newest", "Mới cập nhật"), ("name", "Tên A-Z")]
+        ]
+    )
+
+    chip_items = []
+    for k, label in [("", "Tất cả"), ("tiktok", "TikTok"), ("youtube", "YouTube"), ("instagram", "Instagram"), ("facebook", "Facebook")]:
+        href = (
+            "/explore?"
+            + "&".join(
+                [
+                    f"q={quote_plus(q or '')}",
+                    f"category={quote_plus(category_value)}",
+                    f"platform={quote_plus(k)}",
+                    f"min_followers={int(min_followers or 0)}",
+                    f"sort={quote_plus(sort)}",
+                ]
+            )
+        )
+        cls = "pchip active" if ((not platform and k == "") or platform == k) else "pchip"
+        chip_items.append(f"<a class='{cls}' href='{href}'>{html.escape(label)}</a>")
+    platform_chips = "".join(chip_items)
+
+    p_map = {"tiktok": "TikTok", "youtube": "YouTube", "instagram": "Instagram", "facebook": "Facebook"}
+    s_map = {"followers": "Top followers", "newest": "Mới cập nhật", "name": "Tên A-Z"}
+    active = []
+    if q:
+        active.append(f"<span class='achip'>Tên: {html.escape(q)}</span>")
+    if category_value and category_value.lower() != "all":
+        active.append(f"<span class='achip'>Lĩnh vực: {html.escape(category_value)}</span>")
+    if platform:
+        active.append(f"<span class='achip'>Nền tảng: {html.escape(p_map.get(platform, platform))}</span>")
+    if min_followers > 0:
+        active.append(f"<span class='achip'>≥ {fmt_num(min_followers)} followers</span>")
+    if sort != "followers":
+        active.append(f"<span class='achip'>Sort: {html.escape(s_map.get(sort, sort))}</span>")
+    active_html = (
+        f"<div class='active-filters'><div class='achips'>{''.join(active)}</div><a class='clear' href='/explore'>Reset</a></div>"
+        if active
+        else ""
     )
 
     page = f"""
@@ -757,11 +816,22 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
     .nav3{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%}}
     .btn{{height:42px;padding:0 14px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}}
     .btn.active{{background:linear-gradient(90deg,#7c3aed,#2563eb);border-color:transparent}}
-    .filters{{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;width:100%}}
+    .filters{{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:10px;width:100%}}
     @media(max-width:980px){{.filters{{grid-template-columns:1fr 1fr}}}}
     .input,.select{{height:42px;border-radius:12px;padding:0 12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;outline:none}}
+    .chips-platform{{display:flex;gap:8px;flex-wrap:wrap;width:100%}}
+    .pchip{{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);font-size:12px;color:rgba(234,240,255,.9)}}
+    .pchip.active{{background:linear-gradient(90deg,#7c3aed,#2563eb);border-color:transparent;color:#fff}}
+    .active-filters{{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:2px 0 4px;flex-wrap:wrap}}
+    .achips{{display:flex;gap:8px;flex-wrap:wrap}}
+    .achip{{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:rgba(234,240,255,.85)}}
+    .clear{{font-size:12px;padding:6px 10px;border:1px solid rgba(255,255,255,.16);border-radius:999px;background:rgba(255,255,255,.05)}}
     .grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:18px 0 40px}}
-    @media(max-width:980px){{.grid{{grid-template-columns:1fr}}}}
+    @media(max-width:980px){{
+      .grid{{grid-template-columns:1fr}}
+      .chips-platform{{overflow:auto;white-space:nowrap;flex-wrap:nowrap;padding-bottom:2px}}
+      .pchip{{flex:0 0 auto}}
+    }}
     .card{{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);border-radius:16px;padding:14px}}
     .row{{display:flex;gap:12px;align-items:center}}
     .avatar{{width:64px;height:64px;aspect-ratio:1/1;border-radius:12px;object-fit:cover;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04)}}
@@ -785,8 +855,11 @@ def render_explore(start_response, q: str = "", category: str = "", platform: st
           <input name='min_followers' value='{int(min_followers or 0)}' type='number' min='0' step='1000' class='input' placeholder='Min followers'/>
           <select name='category' class='select'>{category_options}</select>
           <select name='platform' class='select'>{platform_options}</select>
+          <select name='sort' class='select'>{sort_options}</select>
           <button class='btn' type='submit'>Lọc</button>
         </form>
+        <div class='chips-platform'>{platform_chips}</div>
+        {active_html}
       </div>
     </div>
   </div>
@@ -968,7 +1041,8 @@ def app(environ, start_response):
         q = (qs.get("q", [""])[0] or "").strip()
         category = (qs.get("category", [""])[0] or "").strip()
         platform = (qs.get("platform", [""])[0] or "").strip()
+        sort = (qs.get("sort", ["followers"])[0] or "followers").strip()
         min_followers = clamp_int((qs.get("min_followers", ["0"])[0] or "0"), 0, 0, 10**9)
-        return render_explore(start_response, q, category=category, platform=platform, min_followers=min_followers)
+        return render_explore(start_response, q, category=category, platform=platform, min_followers=min_followers, sort=sort)
 
     return json_response(start_response, {"ok": False, "error": "Not found"}, "404 Not Found")
