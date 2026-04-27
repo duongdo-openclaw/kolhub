@@ -348,7 +348,9 @@ def render_home(start_response):
             """
         )
 
-    chips = "".join([f"<span class='chip'>{html.escape(x)}</span>" for x in CATEGORIES_10])
+    chips = "".join([
+        f"<a class='chip' href='/explore?category={quote_plus(x)}'>{html.escape(x)}</a>" for x in CATEGORIES_10
+    ])
 
     def top_list_html(items, label, unit):
         li = []
