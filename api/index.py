@@ -241,6 +241,43 @@ def render_home(start_response):
             ).fetchall()
         ]
 
+        top_tiktok = [
+            dict(r)
+            for r in conn.execute(
+                """
+                select id,name,image_url,type,category,tiktok_followers as v
+                from profiles
+                where (tiktok_handle is not null and trim(tiktok_handle) != '')
+                order by tiktok_followers desc
+                limit 30
+                """
+            ).fetchall()
+        ]
+        top_youtube = [
+            dict(r)
+            for r in conn.execute(
+                """
+                select id,name,image_url,type,category,youtube_subs as v
+                from profiles
+                where (youtube_handle is not null and trim(youtube_handle) != '')
+                order by youtube_subs desc
+                limit 30
+                """
+            ).fetchall()
+        ]
+        top_facebook = [
+            dict(r)
+            for r in conn.execute(
+                """
+                select id,name,image_url,type,category,facebook_followers as v
+                from profiles
+                where (facebook_handle is not null and trim(facebook_handle) != '')
+                order by facebook_followers desc
+                limit 30
+                """
+            ).fetchall()
+        ]
+
     cards = []
     for p in featured:
         total = (p.get("tiktok_followers") or 0) + (p.get("youtube_subs") or 0) + (p.get("instagram_followers") or 0) + (p.get("facebook_followers") or 0)
@@ -262,6 +299,29 @@ def render_home(start_response):
         )
 
     chips = "".join([f"<span class='chip'>{html.escape(x)}</span>" for x in CATEGORIES_10])
+
+    def top_list_html(items, label):
+        li = []
+        for r in items:
+            avatar = proxied_image_url(r.get("image_url") or "", r.get("name") or "KOL")
+            li.append(
+                f"""
+                <a class='t-item' href='/profile/{r.get("id")}' title='{html.escape(r.get("name") or '')}'>
+                  <img src='{html.escape(avatar)}' alt='{html.escape(r.get("name") or '')}' onerror="this.onerror=null;this.src='/img?seed=top-fallback';"/>
+                  <div class='t-name'>{html.escape(r.get("name") or '')}</div>
+                  <div class='t-val'>{fmt_num(r.get('v') or 0)}</div>
+                </a>
+                """
+            )
+        return f"<div class='topbox'><div class='topbox-h'>{html.escape(label)}</div><div class='t-grid'>{''.join(li) or '<div class=\'empty\'>Chưa có dữ liệu</div>'}</div></div>"
+
+    top_sections = "".join(
+        [
+            top_list_html(top_tiktok, "Top follow TikTok (30)"),
+            top_list_html(top_youtube, "Top follow YouTube (30)"),
+            top_list_html(top_facebook, "Top follow Facebook (30)"),
+        ]
+    )
 
     page = f"""
 <!doctype html>
@@ -289,7 +349,7 @@ def render_home(start_response):
     .btn{{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--panel)}}
     .btn.pri{{border:0;background:linear-gradient(90deg,var(--acc),#4f46e5)}}
 
-    .hero{{padding:72px 0 38px}}
+    .hero{{padding:72px 0 28px}}
     .hero-grid{{display:grid;grid-template-columns:1.15fr .85fr;gap:22px}}
     @media(max-width:920px){{.hero-grid{{grid-template-columns:1fr}}.hero{{padding-top:44px}}}}
     .panel{{border:1px solid var(--border);background:var(--panel);border-radius:20px}}
@@ -321,6 +381,19 @@ def render_home(start_response):
     .f-meta span{{padding:4px 7px;border:1px solid var(--border);border-radius:999px}}
     .f-total{{margin-top:10px;font-size:12px;color:#c5d0ff}}
 
+    .topwrap{{padding:0 0 46px}}
+    .top3{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
+    @media(max-width:980px){{.top3{{grid-template-columns:1fr}}}}
+    .topbox{{border:1px solid var(--border);background:rgba(255,255,255,.04);border-radius:18px;padding:14px}}
+    .topbox-h{{font-weight:900;margin-bottom:10px}}
+    .t-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}}
+    .t-item{{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;
+      padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03)}}
+    .t-item img{{width:44px;height:44px;border-radius:12px;object-fit:cover;border:1px solid rgba(255,255,255,.10)}}
+    .t-name{{font-weight:800;font-size:13px;line-height:1.2}}
+    .t-val{{font-weight:900;color:#c5d0ff;font-size:12px}}
+    .empty{{color:var(--muted2);font-size:13px}}
+
     .foot{{padding:24px 0 36px;border-top:1px solid var(--border);color:var(--muted2);font-size:13px}}
   </style>
 </head>
@@ -330,8 +403,8 @@ def render_home(start_response):
       <div class='nav-in'>
         <div class='brand'><span class='dot'></span> KOL Hub VN</div>
         <div style='display:flex;gap:10px;flex-wrap:wrap'>
-          <a class='btn' href='/explore'>Khám phá KOLhub</a>
-          <a class='btn pri' href='/profile/first'>Profile mẫu</a>
+          <a class='btn' href='/explore'>Khám phá KOList</a>
+          <a class='btn pri' href='/profile/first'>Top Profile</a>
         </div>
       </div>
     </div>
@@ -342,10 +415,10 @@ def render_home(start_response):
       <div class='hero-grid'>
         <div class='panel hero-main'>
           <h1>Kho dữ liệu KOL/KOC Việt Nam,<br/>tập trung <span style='background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent'>highlight profile chất</span>.</h1>
-          <div class='lead'>Home giữ vai trò giới thiệu và spotlight các KOL nổi bật. Trang KOList để search/filter sâu. Content gần đây dẫn về nguồn gốc; affiliate sẽ gắn ở module sản phẩm khi có chứng cứ dùng thật.</div>
+          <div class='lead'>Home giữ vai trò giới thiệu và spotlight các KOL nổi bật. Trang KOList để search/filter sâu theo lĩnh vực & nền tảng.</div>
           <div class='chips'>{chips}</div>
           <div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:18px'>
-            <a class='btn pri' href='/explore'>Khám phá KOLhub</a>
+            <a class='btn pri' href='/explore'>Mở KOList</a>
           </div>
         </div>
 
@@ -366,10 +439,22 @@ def render_home(start_response):
             <h2>Highlighted KOL</h2>
             <p>Ít nhưng nổi bật: ưu tiên profile có follower mạnh và nhiều nền tảng để đội marketing ra quyết định nhanh.</p>
           </div>
-          <a class='btn' href='/explore'>Khám phá KOLhub</a>
+          <a class='btn' href='/explore'>Khám phá KOList</a>
         </div>
         <div class='f-grid'>
           {''.join(cards)}
+        </div>
+      </div>
+
+      <div class='topwrap'>
+        <div class='sec-h'>
+          <div>
+            <h2>Top follow theo nền tảng</h2>
+            <p>Ưu tiên profile có handle rõ (đặc biệt TikTok). Mỗi box lấy top 30.</p>
+          </div>
+        </div>
+        <div class='top3'>
+          {top_sections}
         </div>
       </div>
     </div>
