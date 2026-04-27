@@ -114,6 +114,18 @@ def html_response(start_response, html_text, status="200 OK"):
 
 def proxied_image_url(url: str, fallback_seed: str = "kolhub") -> str:
     raw = (url or "").strip()
+    # Treat placeholder avatar services as "no real image" to avoid demo-looking UI.
+    # These often get abused / look fake, so we prefer our own deterministic SVG.
+    low = raw.lower()
+    if (
+        not raw
+        or "ui-avatars.com" in low
+        or "pravatar" in low
+        or "picsum" in low
+        or "placehold" in low
+        or low.startswith("data:")
+    ):
+        raw = ""
     return f"/img?url={quote_plus(raw)}&seed={quote_plus(fallback_seed)}"
 
 
