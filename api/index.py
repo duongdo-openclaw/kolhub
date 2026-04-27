@@ -290,6 +290,12 @@ def render_home(start_response):
                 from profiles
                 where (tiktok_handle is not null and trim(tiktok_handle) != '')
                   and trim(ifnull(image_url,'')) != ''
+                  and lower(image_url) not like '%randomuser.me%'
+                  and lower(image_url) not like '%ui-avatars%'
+                  and lower(image_url) not like '%pravatar%'
+                  and lower(image_url) not like '%picsum%'
+                  and lower(image_url) not like '%placehold%'
+                  and lower(image_url) not like '%unavatar.io%'
                 order by tiktok_followers desc
                 limit 30
                 """
